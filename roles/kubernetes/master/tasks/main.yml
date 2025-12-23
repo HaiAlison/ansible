@@ -1,0 +1,85 @@
+---
+- name: Lấy IP address của master node
+  ansible.builtin.set_fact:
+    apiserver_advertise_address: "{{ ansible_host | default(ansible_default_ipv4.address) }}"
+
+- name: Init Kubernetes master bằng kubeadm
+  ansible.builtin.command: >
+    kubeadm init
+    --pod-network-cidr={{ pod_cidr }}
+    --apiserver-advertise-address={{ apiserver_advertise_address }}
+    --kubernetes-version={{ kubernetes_version }}
+  args:
+    creates: /etc/kubernetes/admin.conf
+  register: kubeadm_init
+
+- name: Tạo thư mục .kube cho root
+  ansible.builtin.file:
+    path: /root/.kube
+    state: directory
+    mode: "0700"
+
+- name: Copy admin.conf về ~/.kube/config
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /root/.kube/config
+    remote_src: yes
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Cài đặt Calico network plugin
+  ansible.builtin.command: >
+    kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/calico.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: calico_apply
+  changed_when: "'created' in calico_apply.stdout or 'configured' in calico_apply.stdout"
+  when: k8s_network_plugin == "calico"
+
+- name: Sinh kubeadm join command cho worker
+  ansible.builtin.command: kubeadm token create --print-join-command
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: kubeadm_join_cmd
+
+- name: Ghi join command ra file cho worker dùng
+  ansible.builtin.copy:
+    content: "{{ kubeadm_join_cmd.stdout }}\n"
+    dest: /tmp/kubeadm_join_cmd.sh
+    mode: "0700"
+
+- name: Hiển thị join command (debug)
+  ansible.builtin.debug:
+    msg: "{{ kubeadm_join_cmd.stdout }}"
+
+- name: Đợi Calico pods khởi động
+  ansible.builtin.command: >
+    kubectl wait --for=condition=ready pod -l k8s-app=calico-node -n kube-system --timeout=300s
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: k8s_network_plugin == "calico"
+  ignore_errors: yes
+  changed_when: false
+
+- name: Verify cluster nodes
+  ansible.builtin.command: kubectl get nodes -o wide
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: cluster_nodes
+  changed_when: false
+
+- name: Hiển thị danh sách nodes
+  ansible.builtin.debug:
+    var: cluster_nodes.stdout_lines
+
+- name: Include verify tasks
+  ansible.builtin.include_tasks: verify.yml
+
+- name: Include hardening tasks
+  ansible.builtin.include_tasks: hardening.yml
+
+- name: Include monitoring tasks
+  ansible.builtin.include_tasks: monitoring.yml
+
+

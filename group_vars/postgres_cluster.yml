@@ -1,0 +1,18 @@
+postgres_version: "15"
+postgres_listen_address: "0.0.0.0"
+postgres_port: 5432
+
+postgres_replication_user: "admin"
+postgres_replication_password: "password_change_me"
+postgres_db_name: "postgres"
+postgres_app_user: "admin"
+postgres_app_password: "password_change_me"
+
+# Backup configuration
+postgres_enable_backup: true
+postgres_backup_dir: "/var/backups/postgresql"
+postgres_backup_hour: "2"
+postgres_backup_minute: "0"
+postgres_backup_retention_days: 3
+
+

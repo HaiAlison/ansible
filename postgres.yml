@@ -1,0 +1,16 @@
+---
+- name: Triển khai PostgreSQL master
+  hosts: pg_master
+  become: yes
+  roles:
+    - common
+    - postgres/master
+
+- name: Triển khai PostgreSQL slave
+  hosts: pg_slave
+  become: yes
+  roles:
+    - common
+    - postgres/slave
+
+

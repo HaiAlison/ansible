@@ -1,0 +1,141 @@
+---
+- name: Tải GPG key cho RabbitMQ Erlang
+  ansible.builtin.get_url:
+    url: https://github.com/rabbitmq/signing-keys/releases/download/3.0/cloudsmith.rabbitmq-erlang.E495BB49CC4BBE5B.key
+    dest: /usr/share/keyrings/rabbitmq-erlang-keyring.gpg
+    mode: "0644"
+  when: ansible_os_family == "Debian"
+
+- name: Tải GPG key cho RabbitMQ Server
+  ansible.builtin.get_url:
+    url: https://github.com/rabbitmq/signing-keys/releases/download/3.0/cloudsmith.rabbitmq-server.E495BB49CC4BBE5B.key
+    dest: /usr/share/keyrings/rabbitmq-server-keyring.gpg
+    mode: "0644"
+  when: ansible_os_family == "Debian"
+
+- name: Thêm RabbitMQ Erlang repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/rabbitmq-erlang-keyring.gpg] https://ppa1.novemberain.com/rabbitmq/rabbitmq-erlang/ubuntu {{ ansible_distribution_release }} main"
+    state: present
+    filename: rabbitmq-erlang
+  when: ansible_os_family == "Debian" and ansible_distribution == "Ubuntu"
+
+- name: Thêm RabbitMQ Server repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/rabbitmq-server-keyring.gpg] https://ppa1.novemberain.com/rabbitmq/rabbitmq-server/ubuntu {{ ansible_distribution_release }} main"
+    state: present
+    filename: rabbitmq-server
+  when: ansible_os_family == "Debian" and ansible_distribution == "Ubuntu"
+
+- name: Cập nhật apt cache sau khi thêm repo
+  ansible.builtin.apt:
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Cài đặt Erlang (dependency của RabbitMQ)
+  ansible.builtin.apt:
+    name: erlang
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+  ignore_errors: yes
+
+- name: Cài đặt RabbitMQ với version cụ thể
+  ansible.builtin.apt:
+    name: "rabbitmq-server={{ rabbitmq_version }}-1"
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+  ignore_errors: yes
+
+- name: Cài đặt RabbitMQ (fallback nếu version cụ thể không có)
+  ansible.builtin.apt:
+    name: rabbitmq-server
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Đảm bảo RabbitMQ service được bật
+  ansible.builtin.service:
+    name: rabbitmq-server
+    state: started
+    enabled: yes
+
+- name: Đợi RabbitMQ khởi động hoàn toàn
+  ansible.builtin.wait_for:
+    port: 5672
+    delay: 10
+    timeout: 60
+
+- name: Cấu hình erlang.cookie (phải giống nhau trên tất cả node trong cluster)
+  ansible.builtin.copy:
+    dest: /var/lib/rabbitmq/.erlang.cookie
+    content: "{{ rabbitmq_erlang_cookie }}"
+    owner: rabbitmq
+    group: rabbitmq
+    mode: "0400"
+  notify: Restart RabbitMQ
+
+- name: Bật management plugin
+  ansible.builtin.command: rabbitmq-plugins enable rabbitmq_management
+  changed_when: true
+  failed_when: false
+
+- name: Tạo default user và đặt password
+  ansible.builtin.command: >
+    rabbitmqctl add_user {{ rabbitmq_default_user }} {{ rabbitmq_default_pass }}
+  args:
+    creates: /var/lib/rabbitmq/.rabbitmq_initialized
+  register: add_user_result
+  failed_when: add_user_result.rc != 0 and "already exists" not in add_user_result.stderr
+
+- name: Đặt quyền administrator cho default user
+  ansible.builtin.command: >
+    rabbitmqctl set_user_tags {{ rabbitmq_default_user }} administrator
+  when: add_user_result.rc == 0 or "already exists" in add_user_result.stderr | default(false)
+
+- name: Xóa guest user (bảo mật)
+  ansible.builtin.command: rabbitmqctl delete_user guest
+  ignore_errors: yes
+  changed_when: false
+
+- name: Đảm bảo default vhost tồn tại
+  ansible.builtin.command: >
+    rabbitmqctl add_vhost {{ rabbitmq_default_vhost }}
+  ignore_errors: yes
+  changed_when: false
+
+- name: Cấp quyền cho default user trên default vhost
+  ansible.builtin.command: >
+    rabbitmqctl set_permissions -p {{ rabbitmq_default_vhost }} {{ rabbitmq_default_user }} ".*" ".*" ".*"
+  when: add_user_result.rc == 0 or "already exists" in add_user_result.stderr | default(false)
+
+- name: Tạo file đánh dấu đã khởi tạo
+  ansible.builtin.file:
+    path: /var/lib/rabbitmq/.rabbitmq_initialized
+    state: touch
+    owner: rabbitmq
+    group: rabbitmq
+    mode: "0644"
+
+- name: Kiểm tra RabbitMQ đang chạy
+  ansible.builtin.command: rabbitmqctl status
+  register: rabbitmq_status
+  changed_when: false
+
+- name: Hiển thị trạng thái RabbitMQ
+  ansible.builtin.debug:
+    var: rabbitmq_status.stdout_lines
+
+- name: Include cluster tasks nếu có nhiều node
+  ansible.builtin.include_tasks: cluster.yml
+  when: rabbitmq_cluster_nodes | length > 1
+
+- name: Include verify tasks
+  ansible.builtin.include_tasks: verify.yml
+
+- name: Include hardening tasks
+  ansible.builtin.include_tasks: hardening.yml
+
+- name: Include monitoring tasks
+  ansible.builtin.include_tasks: monitoring.yml

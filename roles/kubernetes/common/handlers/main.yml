@@ -1,0 +1,11 @@
+---
+- name: Reload sysctl
+  ansible.builtin.command: sysctl --system
+  become: yes
+
+- name: Restart kubelet
+  ansible.builtin.service:
+    name: kubelet
+    state: restarted
+
+

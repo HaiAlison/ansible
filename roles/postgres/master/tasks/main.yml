@@ -1,0 +1,122 @@
+---
+- name: Cài đặt PostgreSQL
+  ansible.builtin.apt:
+    name: "postgresql-{{ postgres_version }}"
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Đảm bảo PostgreSQL service được bật
+  ansible.builtin.service:
+    name: "postgresql"
+    state: started
+    enabled: yes
+
+- name: Tạo replication user
+  become_user: postgres
+  ansible.builtin.postgresql_user:
+    name: "{{ postgres_replication_user }}"
+    password: "{{ postgres_replication_password }}"
+    priv: "REPLICATION"
+    state: present
+
+- name: Tạo application database
+  become_user: postgres
+  ansible.builtin.postgresql_db:
+    name: "{{ postgres_db_name }}"
+    state: present
+
+- name: Tạo application user
+  become_user: postgres
+  ansible.builtin.postgresql_user:
+    name: "{{ postgres_app_user }}"
+    password: "{{ postgres_app_password }}"
+    priv: "{{ postgres_db_name }}:ALL"
+    state: present
+
+- name: Cấu hình postgresql.conf cho replication
+  ansible.builtin.blockinfile:
+    path: "/etc/postgresql/{{ postgres_version }}/main/postgresql.conf"
+    block: |
+      listen_addresses = '{{ postgres_listen_address }}'
+      wal_level = replica
+      max_wal_senders = 3
+      wal_keep_size = 1GB
+      archive_mode = on
+      archive_command = 'test ! -f /var/lib/postgresql/archive/%f && cp %p /var/lib/postgresql/archive/%f'
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - PostgreSQL Replication Config"
+    create: yes
+
+- name: Tạo thư mục archive
+  ansible.builtin.file:
+    path: /var/lib/postgresql/archive
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0700"
+
+- name: Cấu hình pg_hba.conf để cho phép replication từ slave
+  ansible.builtin.blockinfile:
+    path: "/etc/postgresql/{{ postgres_version }}/main/pg_hba.conf"
+    block: |
+      # Replication connection từ slave
+      host    replication    {{ postgres_replication_user }}    0.0.0.0/0    md5
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - PostgreSQL Replication Access"
+    create: yes
+
+- name: Restart PostgreSQL để áp dụng cấu hình
+  ansible.builtin.service:
+    name: "postgresql"
+    state: restarted
+
+- name: Kiểm tra PostgreSQL đang lắng nghe
+  ansible.builtin.wait_for:
+    port: "{{ postgres_port }}"
+    host: "{{ postgres_listen_address }}"
+    delay: 5
+    timeout: 30
+
+- name: Verify replication user đã được tạo
+  become_user: postgres
+  ansible.builtin.command: psql -c "SELECT usename FROM pg_user WHERE usename='{{ postgres_replication_user }}';"
+  register: check_repl_user
+  changed_when: false
+  failed_when: "'{{ postgres_replication_user }}' not in check_repl_user.stdout"
+
+- name: Verify application user và database đã được tạo
+  become_user: postgres
+  ansible.builtin.command: psql -c "SELECT datname FROM pg_database WHERE datname='{{ postgres_db_name }}';"
+  register: check_db
+  changed_when: false
+  failed_when: "'{{ postgres_db_name }}' not in check_db.stdout"
+
+- name: Verify WAL level đã được cấu hình đúng
+  become_user: postgres
+  ansible.builtin.command: psql -c "SHOW wal_level;"
+  register: wal_level_check
+  changed_when: false
+  failed_when: "'replica' not in wal_level_check.stdout and 'logical' not in wal_level_check.stdout"
+
+- name: Verify max_wal_senders đã được cấu hình
+  become_user: postgres
+  ansible.builtin.command: psql -c "SHOW max_wal_senders;"
+  register: max_wal_senders_check
+  changed_when: false
+  failed_when: max_wal_senders_check.stdout | int < 1
+
+- name: Hiển thị thông tin replication user
+  ansible.builtin.debug:
+    msg: "Replication user {{ postgres_replication_user }} đã được tạo thành công"
+
+- name: Include backup tasks
+  ansible.builtin.include_tasks: backup.yml
+  when: postgres_enable_backup | default(true)
+
+- name: Include verify tasks
+  ansible.builtin.include_tasks: verify.yml
+
+- name: Include hardening tasks
+  ansible.builtin.include_tasks: hardening.yml
+
+- name: Include monitoring tasks
+  ansible.builtin.include_tasks: monitoring.yml

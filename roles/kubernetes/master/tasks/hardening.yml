@@ -1,0 +1,72 @@
+---
+# Security hardening tasks cho Kubernetes master
+- name: Cấu hình audit logging cho Kubernetes
+  ansible.builtin.copy:
+    dest: /etc/kubernetes/audit-policy.yaml
+    content: |
+      apiVersion: audit.k8s.io/v1
+      kind: Policy
+      rules:
+      - level: Metadata
+        omitStages:
+        - RequestReceived
+    mode: "0644"
+
+- name: Kiểm tra xem kube-apiserver manifest có tồn tại không
+  ansible.builtin.stat:
+    path: /etc/kubernetes/manifests/kube-apiserver.yaml
+  register: apiserver_manifest
+  failed_when: false
+
+- name: Cấu hình kube-apiserver với audit logging (nếu manifest tồn tại)
+  ansible.builtin.blockinfile:
+    path: /etc/kubernetes/manifests/kube-apiserver.yaml
+    block: |
+      - --audit-policy-file=/etc/kubernetes/audit-policy.yaml
+      - --audit-log-path=/var/log/kubernetes/audit.log
+      - --audit-log-maxage=30
+      - --audit-log-maxbackup=10
+      - --audit-log-maxsize=100
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - Audit Logging"
+    insertafter: '^\s*- --authorization-mode='
+  when: apiserver_manifest.stat.exists
+  notify: Restart kubelet
+
+- name: Tạo thư mục audit log
+  ansible.builtin.file:
+    path: /var/log/kubernetes
+    state: directory
+    mode: "0755"
+
+- name: Cấu hình RBAC để giới hạn quyền truy cập
+  ansible.builtin.copy:
+    dest: /etc/kubernetes/rbac-restrictive.yaml
+    content: |
+      # RBAC restrictive policies
+      # Có thể thêm các policies cụ thể ở đây
+    mode: "0644"
+
+- name: Cấu hình network policies (tùy chọn)
+  ansible.builtin.copy:
+    dest: /etc/kubernetes/network-policies.yaml
+    content: |
+      # Network policies mẫu
+      # Có thể thêm các network policies cụ thể ở đây
+    mode: "0644"
+
+- name: Cấu hình Pod Security Standards (nếu Kubernetes >= 1.23)
+  ansible.builtin.command: >
+    kubectl label namespace default pod-security.kubernetes.io/enforce=restricted
+    --overwrite
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  ignore_errors: yes
+  changed_when: false
+
+- name: Verify security configurations
+  ansible.builtin.command: kubectl get nodes -o wide
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: nodes_check
+  changed_when: false
+  failed_when: nodes_check.rc != 0

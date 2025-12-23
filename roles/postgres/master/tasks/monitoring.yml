@@ -1,0 +1,64 @@
+---
+# Basic monitoring tasks cho PostgreSQL master
+- name: Tạo thư mục cho monitoring scripts
+  ansible.builtin.file:
+    path: /usr/local/bin/pg-monitoring
+    state: directory
+    mode: "0755"
+
+- name: Tạo script kiểm tra PostgreSQL health
+  ansible.builtin.copy:
+    dest: /usr/local/bin/pg-monitoring/pg-health.sh
+    content: |
+      #!/bin/bash
+      # PostgreSQL health check script
+      
+      echo "=== PostgreSQL Health Check ==="
+      echo "Date: $(date)"
+      echo ""
+      
+      # Check service status
+      echo "--- Service Status ---"
+      systemctl status postgresql --no-pager -l | head -5
+      echo ""
+      
+      # Check connections
+      echo "--- Connection Status ---"
+      sudo -u postgres psql -c "SELECT count(*) as active_connections FROM pg_stat_activity WHERE state = 'active';"
+      echo ""
+      
+      # Check replication status
+      echo "--- Replication Status ---"
+      sudo -u postgres psql -c "SELECT client_addr, state, sync_state FROM pg_stat_replication;" 2>/dev/null || echo "No active replication"
+      echo ""
+      
+      # Check database size
+      echo "--- Database Size ---"
+      sudo -u postgres psql -c "SELECT pg_database.datname, pg_size_pretty(pg_database_size(pg_database.datname)) AS size FROM pg_database;"
+      echo ""
+      
+      # Check WAL status
+      echo "--- WAL Status ---"
+      sudo -u postgres psql -c "SELECT pg_current_wal_lsn(), pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0') as wal_bytes;"
+      echo ""
+    mode: "0755"
+
+- name: Thiết lập cron job cho PostgreSQL health check
+  ansible.builtin.cron:
+    name: "PostgreSQL health check"
+    minute: "*/10"
+    job: "/usr/local/bin/pg-monitoring/pg-health.sh >> /var/log/pg-health.log 2>&1"
+    user: root
+
+- name: Tạo log rotation cho monitoring logs
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/pg-monitoring
+    content: |
+      /var/log/pg-health.log {
+        daily
+        rotate 7
+        compress
+        missingok
+        notifempty
+      }
+    mode: "0644"

@@ -1,0 +1,48 @@
+---
+- name: Đặt hostname
+  ansible.builtin.hostname:
+    name: "{{ ansible_hostname | default(inventory_hostname) }}"
+  when: ansible_hostname is defined or inventory_hostname is defined
+
+- name: Đặt timezone
+  ansible.builtin.timezone:
+    name: Asia/Ho_Chi_Minh
+
+- name: Cấu hình locale
+  ansible.builtin.locale_gen:
+    name: en_US.UTF-8
+    state: present
+
+- name: Cập nhật cache package
+  ansible.builtin.apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  when: ansible_os_family == "Debian"
+
+- name: Cài gói tiện ích cơ bản
+  ansible.builtin.package:
+    name:
+      - vim
+      - curl
+      - htop
+      - net-tools
+      - jq
+      - git
+      - wget
+      - unzip
+    state: present
+
+- name: Tắt swap (k8s yêu cầu)
+  ansible.builtin.command: swapoff -a
+  when: ansible_swaptotal_mb | default(0) > 0
+  changed_when: false
+
+- name: Comment các dòng swap trong /etc/fstab
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^(.*\sswap\s.*)$'
+    replace: '# \1'
+
+- name: Include hosts configuration
+  ansible.builtin.include_tasks: hosts.yml
+

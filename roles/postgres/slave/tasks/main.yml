@@ -1,0 +1,120 @@
+---
+- name: Cài đặt PostgreSQL
+  ansible.builtin.apt:
+    name: "postgresql-{{ postgres_version }}"
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Dừng PostgreSQL nếu đang chạy
+  ansible.builtin.service:
+    name: "postgresql"
+    state: stopped
+  ignore_errors: yes
+
+- name: Xóa data cũ nếu tồn tại (chỉ trên slave)
+  ansible.builtin.file:
+    path: "/var/lib/postgresql/{{ postgres_version }}/main"
+    state: absent
+  when: inventory_hostname in groups['pg_slave']
+
+- name: Tạo thư mục data cho PostgreSQL
+  ansible.builtin.file:
+    path: "/var/lib/postgresql/{{ postgres_version }}/main"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0700"
+
+- name: Lấy master host address
+  ansible.builtin.set_fact:
+    pg_master_host: "{{ hostvars[groups['pg_master'][0]]['ansible_host'] | default(groups['pg_master'][0]) }}"
+
+- name: Thực hiện pg_basebackup từ master
+  become_user: postgres
+  ansible.builtin.command: >
+    pg_basebackup
+    -h {{ pg_master_host }}
+    -D /var/lib/postgresql/{{ postgres_version }}/main
+    -U {{ postgres_replication_user }}
+    -P
+    -v
+    -W
+  environment:
+    PGPASSWORD: "{{ postgres_replication_password }}"
+  args:
+    creates: "/var/lib/postgresql/{{ postgres_version }}/main/PG_VERSION"
+  register: basebackup_result
+
+- name: Tạo file standby.signal (PostgreSQL 12+)
+  ansible.builtin.file:
+    path: "/var/lib/postgresql/{{ postgres_version }}/main/standby.signal"
+    state: touch
+    owner: postgres
+    group: postgres
+    mode: "0600"
+
+- name: Cấu hình primary_conninfo trong postgresql.conf
+  ansible.builtin.blockinfile:
+    path: "/var/lib/postgresql/{{ postgres_version }}/main/postgresql.conf"
+    block: |
+      primary_conninfo = 'host={{ pg_master_host }} port={{ postgres_port }} user={{ postgres_replication_user }} password={{ postgres_replication_password }}'
+      primary_slot_name = 'standby_slot'
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - PostgreSQL Standby Config"
+    create: yes
+
+- name: Tạo replication slot trên master (nếu chưa có)
+  become_user: postgres
+  ansible.builtin.command: >
+    psql -c "SELECT * FROM pg_create_physical_replication_slot('standby_slot');"
+  delegate_to: "{{ groups['pg_master'][0] }}"
+  ignore_errors: yes
+  changed_when: false
+  register: create_slot_result
+
+- name: Khởi động PostgreSQL
+  ansible.builtin.service:
+    name: "postgresql"
+    state: started
+    enabled: yes
+
+- name: Kiểm tra PostgreSQL đang lắng nghe
+  ansible.builtin.wait_for:
+    port: "{{ postgres_port }}"
+    delay: 5
+    timeout: 30
+
+- name: Verify replication status trên master
+  become_user: postgres
+  ansible.builtin.command: >
+    psql -c "SELECT client_addr, state, sync_state, sync_priority FROM pg_stat_replication;"
+  delegate_to: "{{ groups['pg_master'][0] }}"
+  register: replication_status
+  changed_when: false
+  retries: 5
+  delay: 10
+  until: replication_status.rc == 0 and replication_status.stdout | length > 0
+
+- name: Verify slave đang ở chế độ recovery
+  become_user: postgres
+  ansible.builtin.command: psql -c "SELECT pg_is_in_recovery();"
+  register: recovery_check
+  changed_when: false
+  failed_when: "'t' not in recovery_check.stdout"
+
+- name: Verify slave có thể đọc từ master
+  become_user: postgres
+  ansible.builtin.command: psql -c "SELECT pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn();"
+  register: wal_lsn_check
+  changed_when: false
+  failed_when: wal_lsn_check.rc != 0
+
+- name: Hiển thị trạng thái replication
+  ansible.builtin.debug:
+    var: replication_status.stdout_lines
+
+- name: Include verify tasks
+  ansible.builtin.include_tasks: verify.yml
+
+- name: Include monitoring tasks
+  ansible.builtin.include_tasks: monitoring.yml

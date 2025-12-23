@@ -1,0 +1,9 @@
+---
+- name: Triển khai RabbitMQ
+  hosts: rabbitmq
+  become: yes
+  roles:
+    - common
+    - rabbitmq/node
+
+

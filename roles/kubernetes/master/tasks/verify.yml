@@ -1,0 +1,60 @@
+---
+# Tasks verify cho Kubernetes master
+- name: Verify kubelet service đang chạy
+  ansible.builtin.systemd:
+    name: kubelet
+    state: started
+  register: kubelet_status
+  failed_when: kubelet_status.status.ActiveState != "active"
+
+- name: Verify containerd service đang chạy
+  ansible.builtin.systemd:
+    name: containerd
+    state: started
+  register: containerd_status
+  failed_when: containerd_status.status.ActiveState != "active"
+
+- name: Verify kubectl có thể kết nối tới cluster
+  ansible.builtin.command: kubectl cluster-info
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: cluster_info
+  changed_when: false
+  failed_when: cluster_info.rc != 0
+
+- name: Verify tất cả control plane pods đang chạy
+  ansible.builtin.command: kubectl get pods -n kube-system
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: control_plane_pods
+  changed_when: false
+  failed_when: "'Running' not in control_plane_pods.stdout or 'Error' in control_plane_pods.stdout"
+
+- name: Verify network plugin pods đang chạy
+  ansible.builtin.command: kubectl get pods -n kube-system -l k8s-app=calico-node
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: calico_pods
+  changed_when: false
+  failed_when: k8s_network_plugin == "calico" and calico_pods.rc != 0
+
+- name: Verify API server đang lắng nghe
+  ansible.builtin.wait_for:
+    port: 6443
+    host: "{{ apiserver_advertise_address }}"
+    delay: 5
+    timeout: 30
+  register: apiserver_check
+  failed_when: false
+
+- name: Verify etcd đang chạy
+  ansible.builtin.command: kubectl get pods -n kube-system -l component=etcd
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: etcd_pods
+  changed_when: false
+  failed_when: "'Running' not in etcd_pods.stdout"
+
+- name: Hiển thị thông tin cluster
+  ansible.builtin.debug:
+    msg: "Kubernetes cluster đang chạy. API Server: https://{{ apiserver_advertise_address }}:6443"

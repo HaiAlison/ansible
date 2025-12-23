@@ -1,0 +1,57 @@
+---
+# Basic monitoring tasks cho Kubernetes master
+- name: Tạo thư mục cho monitoring scripts
+  ansible.builtin.file:
+    path: /usr/local/bin/k8s-monitoring
+    state: directory
+    mode: "0755"
+
+- name: Tạo script kiểm tra cluster health
+  ansible.builtin.copy:
+    dest: /usr/local/bin/k8s-monitoring/cluster-health.sh
+    content: |
+      #!/bin/bash
+      # Kubernetes cluster health check script
+      
+      KUBECONFIG=/etc/kubernetes/admin.conf
+      
+      echo "=== Kubernetes Cluster Health Check ==="
+      echo "Date: $(date)"
+      echo ""
+      
+      echo "--- Node Status ---"
+      kubectl get nodes -o wide
+      echo ""
+      
+      echo "--- Pod Status (kube-system) ---"
+      kubectl get pods -n kube-system
+      echo ""
+      
+      echo "--- API Server Status ---"
+      kubectl cluster-info
+      echo ""
+      
+      echo "--- Resource Usage ---"
+      kubectl top nodes 2>/dev/null || echo "Metrics server not available"
+      echo ""
+    mode: "0755"
+
+- name: Thiết lập cron job cho cluster health check
+  ansible.builtin.cron:
+    name: "Kubernetes cluster health check"
+    minute: "*/15"
+    job: "/usr/local/bin/k8s-monitoring/cluster-health.sh >> /var/log/k8s-health.log 2>&1"
+    user: root
+
+- name: Tạo log rotation cho monitoring logs
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/k8s-monitoring
+    content: |
+      /var/log/k8s-health.log {
+        daily
+        rotate 7
+        compress
+        missingok
+        notifempty
+      }
+    mode: "0644"

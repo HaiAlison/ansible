@@ -1,0 +1,44 @@
+---
+- name: Common baseline cho tất cả node
+  hosts: all
+  become: yes
+  roles:
+    - common
+
+- name: Triển khai Kubernetes cluster
+  hosts: k8s_cluster
+  become: yes
+  roles:
+    - { role: kubernetes/common }
+
+- name: Triển khai Kubernetes master
+  hosts: k8s_master
+  become: yes
+  roles:
+    - { role: kubernetes/master }
+
+- name: Triển khai Kubernetes worker
+  hosts: k8s_workers
+  become: yes
+  roles:
+    - { role: kubernetes/worker }
+
+- name: Triển khai PostgreSQL master
+  hosts: pg_master
+  become: yes
+  roles:
+    - { role: postgres/master }
+
+- name: Triển khai PostgreSQL slave
+  hosts: pg_slave
+  become: yes
+  roles:
+    - { role: postgres/slave }
+
+- name: Triển khai RabbitMQ
+  hosts: rabbitmq
+  become: yes
+  roles:
+    - { role: rabbitmq/node }
+
+

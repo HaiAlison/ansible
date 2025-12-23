@@ -1,0 +1,69 @@
+---
+# Basic monitoring tasks cho RabbitMQ
+- name: Tạo thư mục cho monitoring scripts
+  ansible.builtin.file:
+    path: /usr/local/bin/rabbitmq-monitoring
+    state: directory
+    mode: "0755"
+
+- name: Tạo script kiểm tra RabbitMQ health
+  ansible.builtin.copy:
+    dest: /usr/local/bin/rabbitmq-monitoring/rabbitmq-health.sh
+    content: |
+      #!/bin/bash
+      # RabbitMQ health check script
+      
+      echo "=== RabbitMQ Health Check ==="
+      echo "Date: $(date)"
+      echo ""
+      
+      # Check service status
+      echo "--- Service Status ---"
+      systemctl status rabbitmq-server --no-pager -l | head -5
+      echo ""
+      
+      # Check node status
+      echo "--- Node Status ---"
+      rabbitmqctl status | head -20
+      echo ""
+      
+      # Check cluster status (if in cluster)
+      echo "--- Cluster Status ---"
+      rabbitmqctl cluster_status 2>/dev/null || echo "Not in cluster"
+      echo ""
+      
+      # Check connections
+      echo "--- Connections ---"
+      rabbitmqctl list_connections name state
+      echo ""
+      
+      # Check queues
+      echo "--- Queues ---"
+      rabbitmqctl list_queues name messages consumers
+      echo ""
+      
+      # Check memory and disk
+      echo "--- Memory and Disk ---"
+      rabbitmqctl status | grep -E "memory|disk"
+      echo ""
+    mode: "0755"
+
+- name: Thiết lập cron job cho RabbitMQ health check
+  ansible.builtin.cron:
+    name: "RabbitMQ health check"
+    minute: "*/10"
+    job: "/usr/local/bin/rabbitmq-monitoring/rabbitmq-health.sh >> /var/log/rabbitmq-health.log 2>&1"
+    user: root
+
+- name: Tạo log rotation cho monitoring logs
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/rabbitmq-monitoring
+    content: |
+      /var/log/rabbitmq-health.log {
+        daily
+        rotate 7
+        compress
+        missingok
+        notifempty
+      }
+    mode: "0644"

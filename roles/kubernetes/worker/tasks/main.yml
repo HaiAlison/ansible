@@ -1,0 +1,31 @@
+---
+- name: Lấy kubeadm join command từ master
+  ansible.builtin.command: cat /tmp/kubeadm_join_cmd.sh
+  delegate_to: "{{ groups['k8s_master'][0] }}"
+  register: join_cmd
+  changed_when: false
+
+- name: Join node vào Kubernetes cluster
+  ansible.builtin.command: "{{ join_cmd.stdout }}"
+  args:
+    creates: /etc/kubernetes/kubelet.conf
+
+- name: Kiểm tra node đã join cluster (chạy trên master)
+  ansible.builtin.command: kubectl get nodes -o wide
+  delegate_to: "{{ groups['k8s_master'][0] }}"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: get_nodes
+  changed_when: false
+
+- name: In danh sách node
+  ansible.builtin.debug:
+    var: get_nodes.stdout
+
+- name: Include verify tasks
+  ansible.builtin.include_tasks: verify.yml
+
+- name: Include hardening tasks
+  ansible.builtin.include_tasks: hardening.yml
+
+

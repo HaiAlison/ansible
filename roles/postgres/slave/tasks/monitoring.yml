@@ -1,0 +1,59 @@
+---
+# Basic monitoring tasks cho PostgreSQL slave
+- name: Tạo thư mục cho monitoring scripts
+  ansible.builtin.file:
+    path: /usr/local/bin/pg-monitoring
+    state: directory
+    mode: "0755"
+
+- name: Tạo script kiểm tra PostgreSQL slave health
+  ansible.builtin.copy:
+    dest: /usr/local/bin/pg-monitoring/pg-slave-health.sh
+    content: |
+      #!/bin/bash
+      # PostgreSQL slave health check script
+      
+      echo "=== PostgreSQL Slave Health Check ==="
+      echo "Date: $(date)"
+      echo ""
+      
+      # Check service status
+      echo "--- Service Status ---"
+      systemctl status postgresql --no-pager -l | head -5
+      echo ""
+      
+      # Check replication status
+      echo "--- Replication Status ---"
+      sudo -u postgres psql -c "SELECT pg_is_in_recovery() as is_in_recovery;"
+      echo ""
+      
+      # Check WAL receive/replay lag
+      echo "--- WAL Lag ---"
+      sudo -u postgres psql -c "SELECT pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn(), pg_wal_lsn_diff(pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn()) as lag_bytes;"
+      echo ""
+      
+      # Check connection to primary
+      echo "--- Primary Connection ---"
+      sudo -u postgres psql -c "SHOW primary_conninfo;" 2>/dev/null || echo "Not configured"
+      echo ""
+    mode: "0755"
+
+- name: Thiết lập cron job cho PostgreSQL slave health check
+  ansible.builtin.cron:
+    name: "PostgreSQL slave health check"
+    minute: "*/10"
+    job: "/usr/local/bin/pg-monitoring/pg-slave-health.sh >> /var/log/pg-slave-health.log 2>&1"
+    user: root
+
+- name: Tạo log rotation cho monitoring logs
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/pg-slave-monitoring
+    content: |
+      /var/log/pg-slave-health.log {
+        daily
+        rotate 7
+        compress
+        missingok
+        notifempty
+      }
+    mode: "0644"

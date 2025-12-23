@@ -1,0 +1,21 @@
+---
+- name: Triển khai Kubernetes cluster (chỉ phần k8s)
+  hosts: k8s_cluster
+  become: yes
+  roles:
+    - { role: common }
+    - { role: kubernetes/common }
+
+- name: Triển khai Kubernetes master
+  hosts: k8s_master
+  become: yes
+  roles:
+    - { role: kubernetes/master }
+
+- name: Triển khai Kubernetes worker
+  hosts: k8s_workers
+  become: yes
+  roles:
+    - { role: kubernetes/worker }
+
+

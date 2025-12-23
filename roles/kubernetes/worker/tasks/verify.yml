@@ -1,0 +1,48 @@
+---
+# Tasks verify cho Kubernetes worker
+- name: Verify kubelet service đang chạy
+  ansible.builtin.systemd:
+    name: kubelet
+    state: started
+  register: kubelet_status
+  failed_when: kubelet_status.status.ActiveState != "active"
+
+- name: Verify containerd service đang chạy
+  ansible.builtin.systemd:
+    name: containerd
+    state: started
+  register: containerd_status
+  failed_when: containerd_status.status.ActiveState != "active"
+
+- name: Verify node đã join cluster (chạy trên master)
+  ansible.builtin.command: kubectl get nodes {{ inventory_hostname }} -o wide
+  delegate_to: "{{ groups['k8s_master'][0] }}"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: node_status
+  changed_when: false
+  retries: 5
+  delay: 10
+  until: node_status.rc == 0 and "'Ready' in node_status.stdout"
+
+- name: Verify node status là Ready
+  ansible.builtin.command: kubectl get nodes {{ inventory_hostname }} --no-headers
+  delegate_to: "{{ groups['k8s_master'][0] }}"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: node_ready_check
+  changed_when: false
+  failed_when: "'Ready' not in node_ready_check.stdout"
+
+- name: Verify kubelet có thể kết nối tới API server
+  ansible.builtin.command: kubectl get nodes {{ inventory_hostname }} -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+  delegate_to: "{{ groups['k8s_master'][0] }}"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: node_ready_status
+  changed_when: false
+  failed_when: node_ready_status.stdout != "True"
+
+- name: Hiển thị thông tin node
+  ansible.builtin.debug:
+    msg: "Worker node {{ inventory_hostname }} đã join cluster thành công"

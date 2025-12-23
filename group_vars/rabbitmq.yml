@@ -1,0 +1,17 @@
+rabbitmq_version: "3.13"
+rabbitmq_erlang_cookie: "CHANGE_ME_SECRET_COOKIE"
+
+rabbitmq_default_user: "admin"
+rabbitmq_default_pass: "password_change_me"
+rabbitmq_default_vhost: "/"
+
+rabbitmq_cluster_nodes:
+  - "rabbit"
+  # - "rabbit2"
+
+# HA Policy configuration (optional)
+# rabbitmq_ha_policy_pattern: ".*"
+# rabbitmq_ha_mode: "all"
+# rabbitmq_reset_before_join: false
+
+

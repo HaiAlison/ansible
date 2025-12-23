@@ -1,0 +1,42 @@
+---
+# Security hardening tasks cho PostgreSQL master
+- name: Cấu hình SSL cho PostgreSQL (tùy chọn)
+  ansible.builtin.blockinfile:
+    path: "/etc/postgresql/{{ postgres_version }}/main/postgresql.conf"
+    block: |
+      ssl = on
+      ssl_cert_file = '/etc/ssl/certs/ssl-cert-snakeoil.pem'
+      ssl_key_file = '/etc/ssl/private/ssl-cert-snakeoil.key'
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - PostgreSQL SSL Config"
+    create: yes
+  when: postgres_enable_ssl | default(false)
+
+- name: Giới hạn số lượng kết nối đồng thời
+  ansible.builtin.blockinfile:
+    path: "/etc/postgresql/{{ postgres_version }}/main/postgresql.conf"
+    block: |
+      max_connections = {{ postgres_max_connections | default(100) }}
+      superuser_reserved_connections = {{ postgres_superuser_reserved_connections | default(3) }}
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - PostgreSQL Connection Limits"
+    create: yes
+
+- name: Cấu hình logging để audit
+  ansible.builtin.blockinfile:
+    path: "/etc/postgresql/{{ postgres_version }}/main/postgresql.conf"
+    block: |
+      log_destination = 'stderr'
+      logging_collector = on
+      log_directory = 'log'
+      log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+      log_connections = on
+      log_disconnections = on
+      log_duration = on
+      log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - PostgreSQL Logging Config"
+    create: yes
+
+- name: Restart PostgreSQL để áp dụng hardening config
+  ansible.builtin.service:
+    name: "postgresql"
+    state: restarted
+  when: postgres_enable_ssl is defined or postgres_max_connections is defined

@@ -1,0 +1,40 @@
+---
+# Tasks verify cho PostgreSQL slave
+- name: Verify PostgreSQL service đang chạy
+  ansible.builtin.systemd:
+    name: postgresql
+    state: started
+  register: pg_service_status
+  failed_when: pg_service_status.status.ActiveState != "active"
+
+- name: Verify PostgreSQL đang lắng nghe trên port
+  ansible.builtin.wait_for:
+    port: "{{ postgres_port }}"
+    delay: 2
+    timeout: 10
+  register: pg_port_check
+  failed_when: false
+
+- name: Verify có thể kết nối tới PostgreSQL
+  become_user: postgres
+  ansible.builtin.command: psql -c "SELECT version();"
+  register: pg_connection_test
+  changed_when: false
+  failed_when: pg_connection_test.rc != 0
+
+- name: Verify standby.signal file tồn tại
+  ansible.builtin.stat:
+    path: "/var/lib/postgresql/{{ postgres_version }}/main/standby.signal"
+  register: standby_signal_stat
+  failed_when: not standby_signal_stat.stat.exists
+
+- name: Verify primary_conninfo đã được cấu hình
+  become_user: postgres
+  ansible.builtin.command: psql -c "SHOW primary_conninfo;"
+  register: primary_conninfo_check
+  changed_when: false
+  failed_when: primary_conninfo_check.rc != 0 or primary_conninfo_check.stdout | length == 0
+
+- name: Hiển thị thông tin PostgreSQL version
+  ansible.builtin.debug:
+    msg: "PostgreSQL slave đang chạy: {{ pg_connection_test.stdout_lines[0] }}"

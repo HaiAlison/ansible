@@ -1,0 +1,80 @@
+---
+# Task này sẽ được gọi từ playbook chính khi có nhiều hơn 1 node RabbitMQ
+- name: Lấy hostname của node đầu tiên
+  ansible.builtin.set_fact:
+    first_node_hostname: "{{ hostvars[rabbitmq_cluster_nodes[0]]['ansible_hostname'] | default(hostvars[rabbitmq_cluster_nodes[0]]['inventory_hostname'] | default(rabbitmq_cluster_nodes[0])) }}"
+
+- name: Kiểm tra xem có phải node đầu tiên không
+  ansible.builtin.set_fact:
+    is_first_node: "{{ ansible_hostname == first_node_hostname or inventory_hostname == rabbitmq_cluster_nodes[0] }}"
+
+- name: Đợi node đầu tiên sẵn sàng
+  ansible.builtin.wait_for:
+    host: "{{ hostvars[rabbitmq_cluster_nodes[0]]['ansible_host'] | default(rabbitmq_cluster_nodes[0]) }}"
+    port: 5672
+    delay: 10
+    timeout: 60
+  when: not is_first_node
+  delegate_to: localhost
+
+- name: Join cluster (chỉ chạy trên các node không phải node đầu tiên)
+  ansible.builtin.command: >
+    rabbitmqctl stop_app
+  when: not is_first_node
+  register: stop_app_result
+
+- name: Reset node trước khi join (tùy chọn, chỉ khi cần)
+  ansible.builtin.command: >
+    rabbitmqctl reset
+  when: not is_first_node and rabbitmq_reset_before_join | default(false)
+  ignore_errors: yes
+
+- name: Join vào cluster với node đầu tiên
+  ansible.builtin.command: >
+    rabbitmqctl join_cluster rabbit@{{ first_node_hostname }}
+  when: not is_first_node
+  register: join_cluster_result
+  failed_when: join_cluster_result.rc != 0 and "already in cluster" not in join_cluster_result.stderr
+
+- name: Khởi động lại app sau khi join
+  ansible.builtin.command: >
+    rabbitmqctl start_app
+  when: not is_first_node
+  notify: Restart RabbitMQ
+
+- name: Đặt HA policy để mirror queue (nếu được cấu hình)
+  ansible.builtin.command: >
+    rabbitmqctl set_policy ha-all "{{ rabbitmq_ha_policy_pattern | default('.*') }}"
+    '{"ha-mode":"{{ rabbitmq_ha_mode | default('all') }}","ha-sync-mode":"automatic"}'
+  when: rabbitmq_ha_policy_pattern is defined
+  ignore_errors: yes
+
+- name: Kiểm tra cluster status
+  ansible.builtin.command: rabbitmqctl cluster_status
+  register: cluster_status
+  changed_when: false
+  retries: 3
+  delay: 5
+  until: cluster_status.rc == 0
+
+- name: Verify cluster có đủ số node
+  ansible.builtin.command: rabbitmqctl cluster_status
+  register: cluster_status_verify
+  changed_when: false
+  failed_when: rabbitmq_cluster_nodes | length > 1 and (rabbitmq_cluster_nodes | length) not in cluster_status_verify.stdout
+
+- name: Verify HA policy đã được áp dụng
+  ansible.builtin.command: rabbitmqctl list_policies
+  register: ha_policy_check
+  changed_when: false
+  failed_when: false
+  when: rabbitmq_ha_policy_pattern is defined
+
+- name: Hiển thị cluster status
+  ansible.builtin.debug:
+    var: cluster_status.stdout_lines
+
+- name: Hiển thị HA policies
+  ansible.builtin.debug:
+    var: ha_policy_check.stdout_lines
+  when: rabbitmq_ha_policy_pattern is defined and ha_policy_check.rc == 0

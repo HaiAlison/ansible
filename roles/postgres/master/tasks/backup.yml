@@ -1,0 +1,26 @@
+---
+- name: Tạo thư mục backup
+  ansible.builtin.file:
+    path: "{{ postgres_backup_dir | default('/var/backups/postgresql') }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0700"
+
+- name: Tạo script backup
+  ansible.builtin.template:
+    src: backup.sh.j2
+    dest: /usr/local/bin/postgres-backup.sh
+    owner: root
+    group: root
+    mode: "0755"
+  when: postgres_enable_backup | default(true)
+
+- name: Thiết lập cron job cho backup
+  ansible.builtin.cron:
+    name: "PostgreSQL backup"
+    minute: "{{ postgres_backup_minute | default('0') }}"
+    hour: "{{ postgres_backup_hour | default('2') }}"
+    job: "/usr/local/bin/postgres-backup.sh"
+    user: postgres
+  when: postgres_enable_backup | default(true)

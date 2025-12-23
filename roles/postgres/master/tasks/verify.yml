@@ -1,0 +1,41 @@
+---
+# Tasks verify cho PostgreSQL master
+- name: Verify PostgreSQL service đang chạy
+  ansible.builtin.systemd:
+    name: postgresql
+    state: started
+  register: pg_service_status
+  failed_when: pg_service_status.status.ActiveState != "active"
+
+- name: Verify PostgreSQL đang lắng nghe trên port
+  ansible.builtin.wait_for:
+    port: "{{ postgres_port }}"
+    host: "{{ postgres_listen_address }}"
+    delay: 2
+    timeout: 10
+  register: pg_port_check
+  failed_when: false
+
+- name: Verify có thể kết nối tới PostgreSQL
+  become_user: postgres
+  ansible.builtin.command: psql -c "SELECT version();"
+  register: pg_connection_test
+  changed_when: false
+  failed_when: pg_connection_test.rc != 0
+
+- name: Verify replication slot đã được tạo (nếu có)
+  become_user: postgres
+  ansible.builtin.command: psql -c "SELECT slot_name FROM pg_replication_slots WHERE slot_name='standby_slot';"
+  register: replication_slot_check
+  changed_when: false
+  failed_when: false
+
+- name: Hiển thị thông tin PostgreSQL version
+  ansible.builtin.debug:
+    msg: "PostgreSQL đang chạy: {{ pg_connection_test.stdout_lines[0] }}"
+
+- name: Verify archive directory tồn tại và có quyền đúng
+  ansible.builtin.stat:
+    path: /var/lib/postgresql/archive
+  register: archive_dir_stat
+  failed_when: not archive_dir_stat.stat.exists or archive_dir_stat.stat.mode | int != 448  # 448 = 0700

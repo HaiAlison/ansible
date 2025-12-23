@@ -1,0 +1,66 @@
+---
+# Security hardening tasks cho RabbitMQ
+- name: Tạo file cấu hình RabbitMQ
+  ansible.builtin.file:
+    path: /etc/rabbitmq/rabbitmq.conf
+    state: touch
+    owner: rabbitmq
+    group: rabbitmq
+    mode: "0644"
+
+- name: Cấu hình security hardening trong rabbitmq.conf
+  ansible.builtin.blockinfile:
+    path: /etc/rabbitmq/rabbitmq.conf
+    block: |
+      # Security hardening
+      # Tắt các tính năng không cần thiết
+      management.tcp.port = 15672
+      management.tcp.ip = 0.0.0.0
+      
+      # Giới hạn số lượng kết nối
+      connection_max = {{ rabbitmq_connection_max | default(1000) }}
+      
+      # Giới hạn số lượng channels
+      channel_max = {{ rabbitmq_channel_max | default(2047) }}
+      
+      # Heartbeat timeout
+      heartbeat = {{ rabbitmq_heartbeat | default(60) }}
+      
+      # Disk free space limit (MB)
+      disk_free_limit.absolute = {{ rabbitmq_disk_free_limit_mb | default(50000) }}
+      
+      # Memory limit (MB)
+      vm_memory_high_watermark.relative = {{ rabbitmq_memory_limit_percent | default(0.4) }}
+      
+      # Logging
+      log.console = true
+      log.console.level = {{ rabbitmq_log_level | default('info') }}
+      
+      # Disable guest access
+      loopback_users.guest = false
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - RabbitMQ Security Hardening"
+    create: yes
+
+- name: Cấu hình firewall rules (nếu ufw được cài)
+  ansible.builtin.command: ufw allow from {{ ansible_default_ipv4.network }}/{{ ansible_default_ipv4.netmask }} to any port 5672
+  ignore_errors: yes
+  changed_when: false
+  when: ansible_os_family == "Debian"
+
+- name: Cấu hình firewall rules cho management port (nếu ufw được cài)
+  ansible.builtin.command: ufw allow from {{ ansible_default_ipv4.network }}/{{ ansible_default_ipv4.netmask }} to any port 15672
+  ignore_errors: yes
+  changed_when: false
+  when: ansible_os_family == "Debian"
+
+- name: Restart RabbitMQ để áp dụng cấu hình
+  ansible.builtin.service:
+    name: rabbitmq-server
+    state: restarted
+  notify: Restart RabbitMQ
+
+- name: Đợi RabbitMQ khởi động lại
+  ansible.builtin.wait_for:
+    port: 5672
+    delay: 10
+    timeout: 60
