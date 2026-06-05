@@ -1,0 +1,68 @@
+---
+- name: Cài đặt Docker và Docker Compose
+  ansible.builtin.apt:
+    name:
+      - docker.io
+      - docker-compose
+    state: present
+    update_cache: yes
+- name: Tạo thư mục cho Rancher
+  ansible.builtin.file:
+    name: /opt/rancher
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+- name: Tạo file docker-compose.yml cho Rancher
+  ansible.builtin.copy:
+    dest: /opt/rancher/docker-compose.yml
+    content: |
+      version: '3'
+      services:
+        rancher:
+          image: rancher/rancher:{{rancher_version}}
+          container_name: rancher
+          privileged: true
+          restart: unless-stopped
+          ports:
+            - "{{ rancher_https_port }}:443"
+            - "{{ rancher_http_port }}:80"
+          volumes:
+            - rancher-data:/var/lib/rancher
+      volumes:
+        rancher-data:
+    owner: root
+    group: root
+    mode: "0644"
+- name: Xóa container Rancher cũ nếu đang tồn tại
+  ansible.builtin.command: docker rm -f rancher
+  register: rancher_remove_old
+  changed_when: rancher_remove_old.rc == 0
+  failed_when: rancher_remove_old.rc not in [0, 1]
+- name: Khởi động Rancher bằng Docker Compose
+  ansible.builtin.command: docker-compose up -d
+  args:
+    chdir: /opt/rancher
+  register: rancher_start
+  changed_when: "'Creating' in rancher_start.stdout or 'Starting' in rancher_start.stdout"
+- name: Kiểm tra container Rancher đang chạy
+  ansible.builtin.command: docker ps --filter "name=rancher" --filter "status=running" --format "{{ '{{' }}.Names{{ '}}' }}"
+  register: rancher_check
+  changed_when: false
+  failed_when: rancher_check.stdout.strip() != "rancher"
+- name: Chờ Rancher API sẵn sàng
+  ansible.builtin.uri:
+    url: "https://127.0.0.1:{{ rancher_https_port }}/ping"
+    method: GET
+    validate_certs: false
+    status_code: 200
+  register: rancher_ping
+  retries: 30
+  delay: 20
+  until: rancher_ping.status == 200
+  changed_when: false
+- name: Hiển thị kết quả kiểm tra Rancher
+  ansible.builtin.debug:
+    msg: "Rancher container is running and API ping returned: {{ rancher_ping.status }}"
+    
+

@@ -1,0 +1,64 @@
+---
+- name: Cài đặt Nginx, Certbot và plugin Nginx
+  ansible.builtin.apt:
+    name:
+      - nginx
+      - certbot
+      - python3-certbot-nginx
+    state: present
+    update_cache: yes
+
+- name: Tạo file cấu hình site Nginx
+  ansible.builtin.template:
+    src: nginx-site.conf.j2
+    dest: "/etc/nginx/sites-available/{{ nginx_site_name }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Bật site Nginx
+  ansible.builtin.file:
+    src: "/etc/nginx/sites-available/{{ nginx_site_name }}"
+    dest: "/etc/nginx/sites-enabled/{{ nginx_site_name }}"
+    state: link
+
+- name: Kiểm tra cấu hình Nginx hợp lệ
+  ansible.builtin.command: nginx -t
+  changed_when: false
+
+- name: Bật Nginx trước khi chạy Certbot nginx plugin
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: true
+
+- name: Lấy/chỉnh certificate Let's Encrypt và tự thêm SSL vào Nginx
+  ansible.builtin.command: >-
+    certbot --nginx
+    --non-interactive
+    --agree-tos
+    --email {{ certbot_email }}
+    --redirect
+    {% for domain in certbot_domains %}-d {{ domain }} {% endfor %}
+  register: certbot_result
+  changed_when: >-
+    'Successfully received certificate' in certbot_result.stdout
+    or 'Congratulations' in certbot_result.stdout
+    or 'Deploying certificate' in certbot_result.stdout
+
+- name: Kiểm tra Nginx đang lắng nghe HTTP
+  ansible.builtin.uri:
+    url: "http://127.0.0.1"
+    status_code:
+      - 200
+      - 301
+      - 302
+      - 401
+      - 403
+      - 404
+  register: nginx_healthcheck
+  changed_when: false
+
+- name: Hiển thị kết quả kiểm tra Nginx
+  ansible.builtin.debug:
+    msg: "Nginx responded on HTTP with status: {{ nginx_healthcheck.status }}"

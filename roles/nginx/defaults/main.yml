@@ -1,0 +1,9 @@
+---
+nginx_site_name: rancher.hai-alison.click
+nginx_server_name: rancher.hai-alison.click
+nginx_root: /var/www/html
+nginx_listen_port: 80
+nginx_proxy_pass: https://localhost:8443
+certbot_email: admin@hai-alison.click
+certbot_domains:
+  - rancher.hai-alison.click

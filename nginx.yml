@@ -1,0 +1,6 @@
+---
+- name: Cập nhật cấu hình Nginx
+  hosts: nginx
+  become: yes
+  roles:
+    - nginx

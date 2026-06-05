@@ -1,0 +1,6 @@
+---
+- name: Cài đặt rancher
+  hosts: nginx
+  become: yes
+  roles:
+    - rancher
