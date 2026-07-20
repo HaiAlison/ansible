@@ -1,4 +1,4 @@
-kubernetes_version: "1.30.0"
+kubernetes_version: "1.35.0"
 container_runtime: "containerd"
 
 # CIDR cho pod và service (không được trùng với CIDR của VPC)
@@ -8,6 +8,6 @@ cluster_domain: "cluster.local"
 
 # Network plugin
 k8s_network_plugin: "calico"
-calico_version: "v3.27.3"
+calico_version: "v3.32.0"
 
 

@@ -1,0 +1,27 @@
+plugin: amazon.aws.aws_ec2
+profile: terraform
+regions:
+  - ap-southeast-1
+
+
+filters:
+  instance-state-name: running
+
+hostnames:
+  - tag:Name
+  - private-ip-address
+
+compose:
+  ansible_host: private_ip_address
+  ansible_user: ubuntu
+
+keyed_groups:
+  - key: tags.Role
+    prefix: role
+  - key: tags.Name
+    prefix: name
+  - key: tags.Cluster
+    prefix: cluster
+
+groups:
+  bastion: "tags.Name == 'bastion-host'"

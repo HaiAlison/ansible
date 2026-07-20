@@ -1,19 +1,19 @@
 ---
 - name: Triển khai Kubernetes cluster (chỉ phần k8s)
-  hosts: k8s_cluster
+  hosts: cluster_k8s
   become: yes
   roles:
     - { role: common }
     - { role: kubernetes/common }
 
 - name: Triển khai Kubernetes master
-  hosts: k8s_master
+  hosts: k8s-master-1
   become: yes
   roles:
     - { role: kubernetes/master }
 
 - name: Triển khai Kubernetes worker
-  hosts: k8s_workers
+  hosts: role_k8s_worker
   become: yes
   roles:
     - { role: kubernetes/worker }

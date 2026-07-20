@@ -16,18 +16,18 @@
 
 - name: Verify node đã join cluster (chạy trên master)
   ansible.builtin.command: kubectl get nodes {{ inventory_hostname }} -o wide
-  delegate_to: "{{ groups['k8s_master'][0] }}"
+  delegate_to: "{{ groups['role_k8s_master'][0] }}"
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
   register: node_status
   changed_when: false
   retries: 5
   delay: 10
-  until: node_status.rc == 0 and "'Ready' in node_status.stdout"
+  until: node_status.rc == 0 and node_status.stdout is search("Ready")
 
 - name: Verify node status là Ready
   ansible.builtin.command: kubectl get nodes {{ inventory_hostname }} --no-headers
-  delegate_to: "{{ groups['k8s_master'][0] }}"
+  delegate_to: "{{ groups['role_k8s_master'][0] }}"
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
   register: node_ready_check
@@ -36,7 +36,7 @@
 
 - name: Verify kubelet có thể kết nối tới API server
   ansible.builtin.command: kubectl get nodes {{ inventory_hostname }} -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
-  delegate_to: "{{ groups['k8s_master'][0] }}"
+  delegate_to: "{{ groups['role_k8s_master'][0] }}"
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
   register: node_ready_status

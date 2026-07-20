@@ -11,16 +11,18 @@
 - name: Tạo file cấu hình site Nginx
   ansible.builtin.template:
     src: nginx-site.conf.j2
-    dest: "/etc/nginx/sites-available/{{ nginx_site_name }}"
+    dest: "/etc/nginx/sites-available/{{ item.nginx_site_name }}"
     owner: root
     group: root
     mode: "0644"
+  loop: "{{ nginx_sites }}"
 
 - name: Bật site Nginx
   ansible.builtin.file:
-    src: "/etc/nginx/sites-available/{{ nginx_site_name }}"
-    dest: "/etc/nginx/sites-enabled/{{ nginx_site_name }}"
+    src: "/etc/nginx/sites-available/{{ item.nginx_site_name }}"
+    dest: "/etc/nginx/sites-enabled/{{ item.nginx_site_name }}"
     state: link
+  loop: "{{ nginx_sites }}"
 
 - name: Kiểm tra cấu hình Nginx hợp lệ
   ansible.builtin.command: nginx -t
@@ -37,14 +39,15 @@
     certbot --nginx
     --non-interactive
     --agree-tos
-    --email {{ certbot_email }}
+    --email {{ item.certbot_email }}
     --redirect
-    {% for domain in certbot_domains %}-d {{ domain }} {% endfor %}
+    {% for domain in item.certbot_domains %}-d {{ domain }} {% endfor %}
   register: certbot_result
   changed_when: >-
     'Successfully received certificate' in certbot_result.stdout
     or 'Congratulations' in certbot_result.stdout
     or 'Deploying certificate' in certbot_result.stdout
+  loop: "{{ nginx_sites }}"
 
 - name: Kiểm tra Nginx đang lắng nghe HTTP
   ansible.builtin.uri:

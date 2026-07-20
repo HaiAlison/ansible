@@ -1,7 +1,7 @@
 ---
 - name: Lấy kubeadm join command từ master
   ansible.builtin.command: cat /tmp/kubeadm_join_cmd.sh
-  delegate_to: "{{ groups['k8s_master'][0] }}"
+  delegate_to: "{{ groups['role_k8s_master'][0] }}"
   register: join_cmd
   changed_when: false
 
@@ -12,7 +12,7 @@
 
 - name: Kiểm tra node đã join cluster (chạy trên master)
   ansible.builtin.command: kubectl get nodes -o wide
-  delegate_to: "{{ groups['k8s_master'][0] }}"
+  delegate_to: "{{ groups['role_k8s_master'][0] }}"
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
   register: get_nodes

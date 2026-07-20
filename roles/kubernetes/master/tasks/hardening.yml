@@ -21,14 +21,8 @@
 - name: Cấu hình kube-apiserver với audit logging (nếu manifest tồn tại)
   ansible.builtin.blockinfile:
     path: /etc/kubernetes/manifests/kube-apiserver.yaml
-    block: |
-      - --audit-policy-file=/etc/kubernetes/audit-policy.yaml
-      - --audit-log-path=/var/log/kubernetes/audit.log
-      - --audit-log-maxage=30
-      - --audit-log-maxbackup=10
-      - --audit-log-maxsize=100
-    marker: "# {mark} ANSIBLE MANAGED BLOCK - Audit Logging"
-    insertafter: '^\s*- --authorization-mode='
+    marker: "    # {mark} ANSIBLE MANAGED BLOCK - Audit Logging"
+    state: absent
   when: apiserver_manifest.stat.exists
   notify: Restart kubelet
 
@@ -60,7 +54,7 @@
     --overwrite
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
-  ignore_errors: yes
+  ignore_errors: true
   changed_when: false
 
 - name: Verify security configurations

@@ -1,7 +1,7 @@
 ---
 - name: Lấy IP address của master node
   ansible.builtin.set_fact:
-    apiserver_advertise_address: "{{ ansible_host | default(ansible_default_ipv4.address) }}"
+    apiserver_advertise_address: "{{ ansible_host }}"
 
 - name: Init Kubernetes master bằng kubeadm
   ansible.builtin.command: >
@@ -30,6 +30,7 @@
 
 - name: Cài đặt Calico network plugin
   ansible.builtin.command: >
+  
     kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/calico.yaml
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
@@ -59,7 +60,7 @@
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
   when: k8s_network_plugin == "calico"
-  ignore_errors: yes
+  ignore_errors: true
   changed_when: false
 
 - name: Verify cluster nodes

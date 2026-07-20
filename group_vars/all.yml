@@ -1,0 +1,7 @@
+ansible_user: ubuntu
+ansible_ssh_common_args: >-
+  {%- if group_names | intersect(['bastion']) -%}
+  {{ '' }}
+  {%- else -%}
+  -o ProxyJump=ubuntu@{{ hostvars[groups['bastion'][0]]['public_ip_address'] }}
+  {%- endif %}

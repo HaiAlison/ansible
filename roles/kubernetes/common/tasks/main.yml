@@ -12,16 +12,25 @@
     update_cache: yes
   when: ansible_os_family == "Debian"
 
-- name: Tải GPG key Kubernetes
-  ansible.builtin.get_url:
-    url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
-    dest: /usr/share/keyrings/kubernetes-archive-keyring.gpg
-    mode: "0644"
+- name: Tạo thư mục apt keyrings
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+  when: ansible_os_family == "Debian"
+
+- name: Tải GPG key Kubernetes v1.35
+  ansible.builtin.shell: |
+    set -o pipefail
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.35/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  args:
+    executable: /bin/bash
+    creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
   when: ansible_os_family == "Debian"
 
 - name: Thêm repo Kubernetes
   ansible.builtin.apt_repository:
-    repo: "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main"
+    repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.35/deb/ /"
     state: present
     filename: kubernetes
   when: ansible_os_family == "Debian"
@@ -66,9 +75,9 @@
 - name: Pin version Kubernetes packages
   ansible.builtin.apt:
     name:
-      - "kubelet={{ kubernetes_version }}-00"
-      - "kubeadm={{ kubernetes_version }}-00"
-      - "kubectl={{ kubernetes_version }}-00"
+      - "kubelet={{ kubernetes_version }}-1.1"
+      - "kubeadm={{ kubernetes_version }}-1.1"
+      - "kubectl={{ kubernetes_version }}-1.1"
     state: present
     update_cache: yes
   when: ansible_os_family == "Debian"

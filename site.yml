@@ -6,7 +6,7 @@
     - common
 
 - name: Triển khai Kubernetes cluster
-  hosts: k8s_cluster
+  hosts: cluster_k8s
   become: yes
   roles:
     - { role: kubernetes/common }
