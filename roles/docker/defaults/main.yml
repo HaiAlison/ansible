@@ -1,0 +1,3 @@
+---
+docker_users: []           # Danh sách user được thêm vào group docker
+docker_compose_version: "" # Để trống = dùng bản mới nhất từ repo apt

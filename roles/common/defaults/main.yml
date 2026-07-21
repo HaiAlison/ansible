@@ -1,0 +1,4 @@
+---
+# Swap: false = tắt swap (K8s), true = bật swap (VPS)
+common_swap_enabled: false
+common_swap_size_mb: 4096

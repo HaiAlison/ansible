@@ -1,0 +1,74 @@
+---
+# ── Prometheus node-exporter (binary, không dùng Docker) ─────────────────
+# Bind localhost:9100 — không expose thẳng ra internet
+
+- name: Tạo system user node_exporter (no login)
+  ansible.builtin.user:
+    name: "{{ node_exporter_user }}"
+    system: yes
+    shell: /usr/sbin/nologin
+    create_home: no
+    state: present
+
+- name: Kiểm tra node_exporter đã cài chưa
+  ansible.builtin.stat:
+    path: "{{ node_exporter_install_dir }}/node_exporter"
+  register: node_exporter_binary
+
+- name: Download node_exporter {{ node_exporter_version }}
+  ansible.builtin.get_url:
+    url: >-
+      https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz
+    dest: /tmp/node_exporter.tar.gz
+    mode: '0644'
+  when: not node_exporter_binary.stat.exists
+
+- name: Giải nén node_exporter
+  ansible.builtin.unarchive:
+    src: /tmp/node_exporter.tar.gz
+    dest: /tmp/
+    remote_src: yes
+  when: not node_exporter_binary.stat.exists
+
+- name: Copy binary vào /usr/local/bin
+  ansible.builtin.copy:
+    src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
+    dest: "{{ node_exporter_install_dir }}/node_exporter"
+    owner: "{{ node_exporter_user }}"
+    group: "{{ node_exporter_user }}"
+    mode: '0755'
+    remote_src: yes
+  when: not node_exporter_binary.stat.exists
+
+- name: Tạo systemd service cho node_exporter
+  ansible.builtin.template:
+    src: node_exporter.service.j2
+    dest: /etc/systemd/system/node_exporter.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart node_exporter
+
+- name: Reload systemd và enable node_exporter
+  ansible.builtin.systemd:
+    daemon_reload: yes
+    name: node_exporter
+    state: started
+    enabled: yes
+
+- name: Kiểm tra node_exporter đang chạy
+  ansible.builtin.uri:
+    url: "http://{{ node_exporter_bind }}:{{ node_exporter_port }}/metrics"
+    status_code: 200
+  register: ne_check
+  changed_when: false
+  retries: 3
+  delay: 5
+
+- name: Dọn file tạm
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/node_exporter.tar.gz
+    - "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64"

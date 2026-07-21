@@ -1,0 +1,28 @@
+---
+# ── Redis server ────────────────────────────────────────────────────────────
+redis_version: "7.4.9" # Cố định version thay vì dùng latest để an toàn
+
+redis_bind: "127.0.0.1" # Chỉ bind localhost, không expose ra ngoài
+redis_port: 6379
+
+redis_user: redis
+redis_group: redis
+
+redis_config_dir: /etc/redis
+redis_data_dir: /var/lib/redis
+redis_log_dir: /var/log/redis
+
+# Persistence
+redis_save_enabled: true # RDB snapshot
+redis_save_config:
+  - "3600 1" # Sau 3600s nếu có ít nhất 1 key thay đổi
+  - "300 100" # Sau 300s nếu có ít nhất 100 key thay đổi
+  - "60 10000" # Sau 60s nếu có ít nhất 10000 key thay đổi
+redis_appendonly: "yes" # AOF — bền dữ liệu hơn RDB đơn thuần
+
+# Memory
+redis_maxmemory: "512mb" # Giới hạn bộ nhớ (50% của 8GB để an toàn với BE)
+redis_maxmemory_policy: "allkeys-lru"
+
+# Password — để trống nếu không cần, OVERRIDE qua vault nếu cần
+redis_requirepass: ""

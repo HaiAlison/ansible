@@ -1,0 +1,8 @@
+---
+deploy_user: deploy
+deploy_user_shell: /bin/bash
+deploy_user_groups:
+  - docker
+
+# Jenkins public SSH key — set qua group_vars/vault
+jenkins_ssh_public_key: ""

@@ -1,0 +1,26 @@
+---
+# ── MinIO server ────────────────────────────────────────────────────────────
+minio_version: "RELEASE.2025-05-24T17-08-30Z"   # pinned, thay bằng latest nếu muốn
+minio_install_dir: /usr/local/bin
+minio_data_dir: /data/minio
+minio_config_dir: /etc/minio
+
+minio_user: minio-user
+minio_group: minio-user
+
+minio_api_port: 9000       # S3 API — BE kết nối vào đây
+minio_console_port: 9001   # Web console
+
+minio_bind: "127.0.0.1"    # Chỉ bind localhost, Nginx reverse proxy ra ngoài
+
+# Credentials — OVERRIDE qua vault, KHÔNG để giá trị thật ở đây
+minio_root_user: "minioadmin"
+minio_root_password: "minioadmin"   # Tối thiểu 8 ký tự
+
+# Buckets cần tạo sau khi MinIO khởi động
+minio_buckets:
+  - name: mail-merge
+    policy: private           # private | public | download | upload
+
+# MinIO Client (mc) để tạo bucket, user, policy
+minio_mc_version: "RELEASE.2025-05-21T01-59-54Z"

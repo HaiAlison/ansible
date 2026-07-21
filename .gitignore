@@ -39,3 +39,5 @@ vault_pass.txt
 /tmp/ansible_facts/
 
 .history
+.cline
+.clinerules

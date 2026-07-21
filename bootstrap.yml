@@ -1,0 +1,39 @@
+---
+# ============================================================
+# Bootstrap Azure VPS — chạy 1 lần để chuẩn bị máy
+# ============================================================
+# Usage:
+#   ansible-playbook bootstrap.yml -i inventory/azure_vps/hosts.ini
+#   ansible-playbook bootstrap.yml -i inventory/azure_vps/hosts.ini --check   # dry-run
+#   ansible-playbook bootstrap.yml -i inventory/azure_vps/hosts.ini --tags docker  # chỉ docker
+# ============================================================
+
+- name: Bootstrap Azure VPS
+  hosts: vps
+  become: yes
+  gather_facts: yes
+
+  roles:
+    - role: common       # Baseline: packages, locale, timezone, swap
+      tags: [common]
+
+    - role: firewall     # UFW: allow 22/80/443
+      tags: [firewall]
+
+    - role: docker       # Docker Engine + Compose plugin
+      tags: [docker]
+
+    - role: users        # deploy user + Jenkins SSH key
+      tags: [users]
+
+    - role: nginx        # Nginx + Certbot SSL + azure-cli
+      tags: [nginx]
+
+    - role: minio        # MinIO object storage (S3-compatible)
+      tags: [minio]
+
+    - role: redis        # Redis cache & queue backend
+      tags: [redis]
+
+    - role: monitoring   # Prometheus node-exporter
+      tags: [monitoring]

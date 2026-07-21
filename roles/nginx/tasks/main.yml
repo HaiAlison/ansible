@@ -8,19 +8,55 @@
     state: present
     update_cache: yes
 
+# ── Azure CLI (để Jenkins dùng az acr login) ──────────────────────────────
+# Thứ tự đúng: tạo thư mục → download GPG key → add repo → cài package
+
+- name: Tạo thư mục /etc/apt/keyrings
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Download Microsoft GPG key (thay thế apt_key deprecated)
+  ansible.builtin.get_url:
+    url: https://packages.microsoft.com/keys/microsoft.asc
+    dest: /etc/apt/keyrings/microsoft.asc
+    mode: '0644'
+    force: false
+
+- name: Chuyển GPG key sang định dạng binary (.gpg)
+  ansible.builtin.command:
+    cmd: gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg /etc/apt/keyrings/microsoft.asc
+    creates: /etc/apt/keyrings/microsoft.gpg
+
+- name: Thêm Azure CLI apt repository
+  ansible.builtin.apt_repository:
+    repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/azure-cli/ {{ ansible_distribution_release }} main"
+    filename: azure-cli
+    state: present
+    update_cache: yes
+
+- name: Cài Azure CLI
+  ansible.builtin.apt:
+    name: azure-cli
+    state: present
+
+# ── Nginx site configuration ───────────────────────────────────────────────
 - name: Tạo file cấu hình site Nginx
   ansible.builtin.template:
     src: nginx-site.conf.j2
-    dest: "/etc/nginx/sites-available/{{ nginx_site_name }}"
+    dest: "/etc/nginx/sites-available/{{ item.nginx_site_name }}"
     owner: root
     group: root
     mode: "0644"
+  loop: "{{nginx_sites}}"
 
 - name: Bật site Nginx
   ansible.builtin.file:
-    src: "/etc/nginx/sites-available/{{ nginx_site_name }}"
-    dest: "/etc/nginx/sites-enabled/{{ nginx_site_name }}"
+    src: "/etc/nginx/sites-available/{{ item.nginx_site_name }}"
+    dest: "/etc/nginx/sites-enabled/{{ item.nginx_site_name }}"
     state: link
+  loop: "{{nginx_sites}}"
 
 - name: Kiểm tra cấu hình Nginx hợp lệ
   ansible.builtin.command: nginx -t
@@ -37,14 +73,15 @@
     certbot --nginx
     --non-interactive
     --agree-tos
-    --email {{ certbot_email }}
+    --email {{ item.certbot_email }}
     --redirect
-    {% for domain in certbot_domains %}-d {{ domain }} {% endfor %}
+    {% for domain in item.certbot_domains %}-d {{ domain }} {% endfor %}
   register: certbot_result
   changed_when: >-
     'Successfully received certificate' in certbot_result.stdout
     or 'Congratulations' in certbot_result.stdout
     or 'Deploying certificate' in certbot_result.stdout
+  loop: "{{nginx_sites}}"
 
 - name: Kiểm tra Nginx đang lắng nghe HTTP
   ansible.builtin.uri:

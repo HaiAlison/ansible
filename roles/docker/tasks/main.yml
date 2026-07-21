@@ -1,0 +1,65 @@
+---
+# ── Cài Docker Engine theo official repo (không dùng snap) ────────────────
+
+- name: Cài các gói phụ thuộc cần thiết
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+    state: present
+    update_cache: yes
+
+- name: Tạo thư mục chứa apt keyring
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Thêm Docker GPG key
+  ansible.builtin.apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    keyring: /etc/apt/keyrings/docker.gpg
+    state: present
+
+- name: Thêm Docker apt repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch={{ ansible_architecture | replace('x86_64', 'amd64') }}
+      signed-by=/etc/apt/keyrings/docker.gpg]
+      https://download.docker.com/linux/ubuntu
+      {{ ansible_distribution_release }} stable
+    filename: docker
+    state: present
+
+- name: Cài Docker Engine và Compose plugin
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+    update_cache: yes
+
+- name: Enable và start Docker service
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: yes
+
+- name: Thêm user vào group docker
+  ansible.builtin.user:
+    name: "{{ item }}"
+    groups: docker
+    append: yes
+  loop: "{{ docker_users }}"
+  when: docker_users | length > 0
+
+- name: Kiểm tra Docker hoạt động
+  ansible.builtin.command: docker info
+  register: docker_info
+  changed_when: false
+  failed_when: docker_info.rc != 0

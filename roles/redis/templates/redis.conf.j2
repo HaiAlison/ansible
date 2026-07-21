@@ -1,0 +1,47 @@
+# Redis configuration — managed by Ansible, DO NOT edit manually
+# Generated from roles/redis/templates/redis.conf.j2
+
+# ── Network ────────────────────────────────────────────────────────────────
+bind {{ redis_bind }}
+port {{ redis_port }}
+protected-mode yes
+
+# Không cho phép kết nối remote nếu không có password
+{% if redis_requirepass | length > 0 %}
+requirepass {{ redis_requirepass }}
+{% endif %}
+
+# ── General ────────────────────────────────────────────────────────────────
+# systemd quản lý process
+daemonize no
+supervised systemd
+logfile {{ redis_log_dir }}/redis-server.log
+
+# ── Persistence — RDB Snapshots ────────────────────────────────────────────
+{% if redis_save_enabled %}
+{% for save_rule in redis_save_config %}
+save {{ save_rule }}
+{% endfor %}
+{% else %}
+save ""
+{% endif %}
+
+dbfilename dump.rdb
+dir {{ redis_data_dir }}
+
+# ── Persistence — AOF ─────────────────────────────────────────────────────
+appendonly {{ redis_appendonly }}
+appendfilename "appendonly.aof"
+# Cân bằng giữa performance và độ bền
+appendfsync everysec
+# ── Memory ────────────────────────────────────────────────────────────────
+maxmemory {{ redis_maxmemory }}
+maxmemory-policy {{ redis_maxmemory_policy }}
+
+# ── Performance ───────────────────────────────────────────────────────────
+tcp-keepalive 300
+timeout 0
+tcp-backlog 511
+
+# Tắt transparent huge pages warning
+# (cần set ở OS level qua sysctl, xử lý ở common role)

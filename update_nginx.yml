@@ -1,0 +1,16 @@
+---
+# ============================================================
+# Cập nhật cấu hình Nginx và SSL
+# Chạy khi có domain mới, site mới thêm vào group_vars
+# ============================================================
+# Usage:
+#   ansible-playbook update_nginx.yml -i inventory/azure_vps/hosts.ini --vault-password-file vault_pass.txt
+# ============================================================
+
+- name: Update Nginx Sites
+  hosts: vps
+  become: yes
+  gather_facts: yes
+
+  roles:
+    - role: nginx

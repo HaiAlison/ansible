@@ -1,0 +1,132 @@
+---
+# ── System user & directories ─────────────────────────────────────────────
+
+- name: Tạo group minio-user
+  ansible.builtin.group:
+    name: "{{ minio_group }}"
+    system: yes
+    state: present
+
+- name: Tạo system user minio-user (no login)
+  ansible.builtin.user:
+    name: "{{ minio_user }}"
+    group: "{{ minio_group }}"
+    system: yes
+    shell: /usr/sbin/nologin
+    create_home: no
+    state: present
+
+- name: Tạo thư mục data MinIO
+  ansible.builtin.file:
+    path: "{{ minio_data_dir }}"
+    state: directory
+    owner: "{{ minio_user }}"
+    group: "{{ minio_group }}"
+    mode: '0750'
+
+- name: Tạo thư mục config MinIO
+  ansible.builtin.file:
+    path: "{{ minio_config_dir }}"
+    state: directory
+    owner: root
+    group: "{{ minio_group }}"
+    mode: '0750'
+
+# ── Download MinIO binary ─────────────────────────────────────────────────
+
+- name: Kiểm tra MinIO binary đã tồn tại chưa
+  ansible.builtin.stat:
+    path: "{{ minio_install_dir }}/minio"
+  register: minio_binary
+
+- name: Download MinIO binary
+  ansible.builtin.get_url:
+    url: "https://dl.min.io/server/minio/release/linux-amd64/archive/minio.{{ minio_version }}"
+    dest: "{{ minio_install_dir }}/minio"
+    owner: root
+    group: root
+    mode: '0755'
+  when: not minio_binary.stat.exists
+  notify: Restart MinIO
+
+# ── Download MinIO Client (mc) ────────────────────────────────────────────
+
+- name: Kiểm tra mc binary đã tồn tại chưa
+  ansible.builtin.stat:
+    path: /usr/local/bin/mc
+  register: mc_binary
+
+- name: Download MinIO Client (mc)
+  ansible.builtin.get_url:
+    url: "https://dl.min.io/client/mc/release/linux-amd64/archive/mc.{{ minio_mc_version }}"
+    dest: /usr/local/bin/mc
+    owner: root
+    group: root
+    mode: '0755'
+  when: not mc_binary.stat.exists
+
+# ── Config file ───────────────────────────────────────────────────────────
+
+- name: Deploy file cấu hình MinIO environment
+  ansible.builtin.template:
+    src: minio.env.j2
+    dest: "{{ minio_config_dir }}/minio.env"
+    owner: root
+    group: "{{ minio_group }}"
+    mode: '0640'    # group đọc được, world không
+  notify: Restart MinIO
+
+# ── Systemd service ───────────────────────────────────────────────────────
+
+- name: Deploy systemd service MinIO
+  ansible.builtin.template:
+    src: minio.service.j2
+    dest: /etc/systemd/system/minio.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart MinIO
+
+- name: Enable và start MinIO service
+  ansible.builtin.systemd:
+    name: minio
+    daemon_reload: yes
+    state: started
+    enabled: yes
+
+# ── Health check ──────────────────────────────────────────────────────────
+
+- name: Chờ MinIO sẵn sàng (health endpoint)
+  ansible.builtin.uri:
+    url: "http://{{ minio_bind }}:{{ minio_api_port }}/minio/health/live"
+    status_code: 200
+  register: minio_health
+  retries: 10
+  delay: 5
+  until: minio_health.status == 200
+  changed_when: false
+
+# ── Tạo buckets bằng mc ───────────────────────────────────────────────────
+
+- name: Cấu hình mc alias trỏ vào MinIO local
+  ansible.builtin.command: >
+    mc alias set local
+    http://{{ minio_bind }}:{{ minio_api_port }}
+    {{ minio_root_user }}
+    {{ minio_root_password }}
+  changed_when: false
+  no_log: true      # ẩn credentials khỏi log
+
+- name: Tạo buckets
+  ansible.builtin.command: >
+    mc mb --ignore-existing local/{{ item.name }}
+  loop: "{{ minio_buckets }}"
+  register: mc_mb_result
+  changed_when: "'Bucket created successfully' in mc_mb_result.stdout"
+
+- name: Set bucket policy
+  ansible.builtin.command: >
+    mc anonymous set {{ item.policy }} local/{{ item.name }}
+  loop: "{{ minio_buckets }}"
+  when: item.policy != 'private'
+  changed_when: true

@@ -1,0 +1,43 @@
+---
+# ── Tạo deploy user cho Jenkins SSH vào VM ───────────────────────────────
+
+- name: Tạo group deploy
+  ansible.builtin.group:
+    name: "{{ deploy_user }}"
+    state: present
+
+- name: Tạo user deploy
+  ansible.builtin.user:
+    name: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    groups: "{{ deploy_user_groups }}"
+    shell: "{{ deploy_user_shell }}"
+    create_home: yes
+    state: present
+
+- name: Tạo thư mục .ssh cho deploy user
+  ansible.builtin.file:
+    path: "/home/{{ deploy_user }}/.ssh"
+    state: directory
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+    mode: '0700'
+
+- name: Thêm Jenkins SSH public key vào authorized_keys
+  ansible.posix.authorized_key:
+    user: "{{ deploy_user }}"
+    state: present
+    key: "{{ jenkins_ssh_public_key }}"
+  when: jenkins_ssh_public_key | length > 0
+
+# ── Sudo giới hạn: deploy chỉ được chạy docker compose ──────────────────
+- name: Cấu hình sudoers cho deploy user (docker compose only)
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/{{ deploy_user }}"
+    content: |
+      # Cho phép deploy user chạy docker compose không cần password
+      {{ deploy_user }} ALL=(root) NOPASSWD: /usr/bin/docker compose *, /usr/bin/docker pull *, /usr/bin/docker image prune *
+    owner: root
+    group: root
+    mode: '0440'
+    validate: 'visudo -cf %s'

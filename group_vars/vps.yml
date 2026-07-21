@@ -1,0 +1,65 @@
+---
+# ── Common role ────────────────────────────────────────────────────────────
+# VPS cần swap, khác K8s
+common_swap_enabled: true
+common_swap_size_mb: 4096 # 4GB swap cho VM 8GB RAM
+
+# ── Docker role ────────────────────────────────────────────────────────────
+docker_users:
+  - deploy # deploy user có quyền dùng docker
+
+# ── Users role ─────────────────────────────────────────────────────────────
+deploy_user: deploy
+jenkins_ssh_public_key: "{{ vault_jenkins_ssh_public_key }}"
+
+# ── Monitoring role ────────────────────────────────────────────────────────
+node_exporter_version: "1.8.2"
+node_exporter_bind: "127.0.0.1" # Chỉ bind localhost
+
+# ── Nginx role ─────────────────────────────────────────────────────────────
+nginx_sites:
+  - nginx_site_name: mail-merge.tech
+    nginx_server_name: mail-merge.tech
+    nginx_root: /var/www/html
+    nginx_listen_port: 80
+    certbot_email: maithanhhai9x@gmail.com
+    certbot_domains:
+      - mail-merge.tech
+  - nginx_site_name: s3.mail-merge.tech
+    nginx_server_name: s3.mail-merge.tech
+    nginx_proxy_pass: http://localhost:9000/
+    nginx_listen_port: 80
+    certbot_email: maithanhhai9x@gmail.com
+    certbot_domains:
+      - s3.mail-merge.tech
+  - nginx_site_name: console-s3.mail-merge.tech
+    nginx_server_name: console-s3.mail-merge.tech
+    nginx_proxy_pass: http://localhost:9001/
+    nginx_listen_port: 80
+    certbot_email: maithanhhai9x@gmail.com
+    certbot_domains:
+      - console-s3.mail-merge.tech
+
+# ── MinIO role ─────────────────────────────────────────────────────────────
+minio_data_dir: /data/minio
+minio_api_port: 9000
+minio_console_port: 9001
+minio_bind: "127.0.0.1"
+
+# Credentials từ vault
+minio_root_user: "{{ vault_minio_root_user }}"
+minio_root_password: "{{ vault_minio_root_password }}"
+
+minio_buckets:
+  - name: mail-merge
+    policy: private
+
+# ── Redis role ─────────────────────────────────────────────────────────────
+redis_bind: "127.0.0.1"
+redis_port: 6379
+redis_maxmemory: "512mb"
+redis_maxmemory_policy: "allkeys-lru"
+redis_appendonly: "yes"
+
+# Nếu cần password, set vault_redis_password trong vault và uncomment dòng dưới:
+# redis_requirepass: "{{ vault_redis_password }}"

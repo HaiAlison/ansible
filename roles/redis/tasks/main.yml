@@ -1,0 +1,114 @@
+---
+# ── Cài Redis từ repo chính thức (mới hơn Ubuntu default) ─────────────────
+
+- name: Tạo thư mục /etc/apt/keyrings (nếu chưa có)
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Download Redis GPG key
+  ansible.builtin.get_url:
+    url: https://packages.redis.io/gpg
+    dest: /etc/apt/keyrings/redis.asc
+    mode: "0644"
+    force: false
+
+- name: Chuyển GPG key sang binary format
+  ansible.builtin.command:
+    cmd: gpg --dearmor -o /etc/apt/keyrings/redis.gpg /etc/apt/keyrings/redis.asc
+    creates: /etc/apt/keyrings/redis.gpg
+
+- name: Thêm Redis apt repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [signed-by=/etc/apt/keyrings/redis.gpg]
+      https://packages.redis.io/deb
+      {{ ansible_distribution_release }} main
+    filename: redis
+    state: present
+    update_cache: yes
+
+- name: Cài Redis 7 (latest từ repo chính thức)
+  ansible.builtin.apt:
+    name: "redis=6:7*"
+    state: present
+    allow_downgrade: yes
+  notify: Restart Redis
+
+# ── Kernel tuning cho Redis ────────────────────────────────────────────────
+
+- name: Tắt Transparent Huge Pages (THP) — Redis khuyến cáo
+  ansible.builtin.command: echo never > /sys/kernel/mm/transparent_hugepage/enabled
+  changed_when: false
+  failed_when: false
+
+- name: Đặt vm.overcommit_memory = 1 (Redis fork cần)
+  ansible.posix.sysctl:
+    name: vm.overcommit_memory
+    value: "1"
+    state: present
+    reload: yes
+
+- name: Tăng somaxconn cho hiệu năng cao
+  ansible.posix.sysctl:
+    name: net.core.somaxconn
+    value: "511"
+    state: present
+    reload: yes
+
+# ── Thư mục data & log ────────────────────────────────────────────────────
+
+- name: Tạo thư mục data Redis
+  ansible.builtin.file:
+    path: "{{ redis_data_dir }}"
+    state: directory
+    owner: "{{ redis_user }}"
+    group: "{{ redis_group }}"
+    mode: "0750"
+
+- name: Tạo thư mục log Redis
+  ansible.builtin.file:
+    path: "{{ redis_log_dir }}"
+    state: directory
+    owner: "{{ redis_user }}"
+    group: "{{ redis_group }}"
+    mode: "0755"
+
+# ── Config ────────────────────────────────────────────────────────────────
+
+- name: Deploy redis.conf
+  ansible.builtin.template:
+    src: redis.conf.j2
+    dest: "{{ redis_config_dir }}/redis.conf"
+    owner: "{{ redis_user }}"
+    group: "{{ redis_group }}"
+    mode: "0640"
+  notify: Restart Redis
+
+# ── Service ───────────────────────────────────────────────────────────────
+
+- name: Enable và start Redis
+  ansible.builtin.systemd:
+    name: redis-server
+    daemon_reload: yes
+    state: started
+    enabled: yes
+
+# ── Health check ──────────────────────────────────────────────────────────
+
+- name: Kiểm tra Redis phản hồi PING
+  ansible.builtin.command: >
+    redis-cli
+    -h {{ redis_bind }}
+    -p {{ redis_port }}
+    {% if redis_requirepass | length > 0 %}-a {{ redis_requirepass }}{% endif %}
+    PING
+  register: redis_ping
+  changed_when: false
+  failed_when: "'PONG' not in redis_ping.stdout"
+  no_log: "{{ redis_requirepass | length > 0 }}"
+
+- name: Hiển thị kết quả health check
+  ansible.builtin.debug:
+    msg: "Redis health: {{ redis_ping.stdout }}"

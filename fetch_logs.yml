@@ -1,0 +1,18 @@
+- hosts: mail-merge-vps
+  tasks:
+    - name: Get Redis version
+      ansible.builtin.shell: apt-cache policy redis-server
+      register: redis_version
+    
+    - name: Get Redis systemd logs
+      ansible.builtin.shell: journalctl -u redis-server.service -n 100 --no-pager
+      register: redis_logs
+      ignore_errors: true
+
+    - name: Debug Redis version
+      ansible.builtin.debug:
+        var: redis_version.stdout_lines
+
+    - name: Debug Redis logs
+      ansible.builtin.debug:
+        var: redis_logs.stdout_lines

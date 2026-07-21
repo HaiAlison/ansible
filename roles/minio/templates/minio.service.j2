@@ -1,0 +1,34 @@
+[Unit]
+Description=MinIO Object Storage Server
+Documentation=https://min.io/docs/
+After=network-online.target
+Wants=network-online.target
+AssertFileIsExecutable={{ minio_install_dir }}/minio
+
+[Service]
+WorkingDirectory={{ minio_data_dir }}
+User={{ minio_user }}
+Group={{ minio_group }}
+ProtectProc=invisible
+
+EnvironmentFile={{ minio_config_dir }}/minio.env
+ExecStart={{ minio_install_dir }}/minio server $MINIO_VOLUMES \
+  --address {{ minio_bind }}:{{ minio_api_port }} \
+  --console-address {{ minio_bind }}:{{ minio_console_port }}
+
+# MinIO tự xử lý restart qua healthcheck
+Restart=always
+RestartSec=5
+
+# Security hardening
+LimitNOFILE=65536
+TasksMax=infinity
+TimeoutStopSec=infinity
+SendSIGKILL=no
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=minio
+
+[Install]
+WantedBy=multi-user.target
